@@ -1,0 +1,62 @@
+# Compiled source #
+###################
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Packages #
+############
+# it's better to unpack these files and commit the raw source
+# git has its own built in compression methods
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Logs and databases #
+######################
+*.log
+*.sql
+*.sqlite
+
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Data Paths #
+###################
+RAW_DATA/*
+PROCESSED_DATA/*
+
+# Jupyter Notebook
+.ipynb_checkpoints
+__pycache__
+
+
+# Python Cache #
+*.pyc
+*.*.pyc
+
+# Claude Code support
+CLAUDE.md
+instructions.md
+data_planning.md
+perturbation-updates.md
+audit.md
+future_architecture.md
+optimization_opportunities.md
+bayes_opt.md
+bayes_opt_future.md
+MEMORY.md
