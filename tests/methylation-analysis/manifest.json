@@ -1,0 +1,14 @@
+{
+    "domain": "methylation-analysis",
+    "display_name": "Methylation Analysis",
+    "description": "CpG methylation summaries, differential methylation ranking, and region-level aggregation",
+    "tests": [
+        {"test_id": "meth-001", "title": "Global Beta Summary", "difficulty": "basic"},
+        {"test_id": "meth-002", "title": "Differential CpG Ranking", "difficulty": "intermediate"},
+        {"test_id": "meth-003", "title": "DMR Region Summary", "difficulty": "intermediate"}
+    ],
+    "environment": {
+        "required_tools": ["python"],
+        "optional_tools": ["bismark", "methylkit", "bsseq", "pandas", "numpy"]
+    }
+}

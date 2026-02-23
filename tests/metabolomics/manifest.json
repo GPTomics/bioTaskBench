@@ -1,0 +1,14 @@
+{
+    "domain": "metabolomics",
+    "display_name": "Metabolomics",
+    "description": "Feature intensity summaries, differential feature ranking, and pathway-level aggregation",
+    "tests": [
+        {"test_id": "metab-001", "title": "Feature Intensity Summary", "difficulty": "basic"},
+        {"test_id": "metab-002", "title": "Differential Feature Ranking", "difficulty": "intermediate"},
+        {"test_id": "metab-003", "title": "Pathway Signal Summary", "difficulty": "intermediate"}
+    ],
+    "environment": {
+        "required_tools": ["python"],
+        "optional_tools": ["xcms", "metaboanalyst", "pandas", "numpy", "scipy"]
+    }
+}

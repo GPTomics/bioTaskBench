@@ -1,0 +1,15 @@
+{
+    "domain": "chip-seq",
+    "display_name": "ChIP-seq",
+    "description": "Peak calling, motif analysis, peak annotation, and differential binding",
+    "tests": [
+        {"test_id": "chipseq-001", "title": "H3K4me3 Peak Calling", "difficulty": "basic"},
+        {"test_id": "chipseq-002", "title": "CTCF Motif Analysis", "difficulty": "intermediate"},
+        {"test_id": "chipseq-003", "title": "Peak Annotation", "difficulty": "intermediate"},
+        {"test_id": "chipseq-004", "title": "Differential Binding", "difficulty": "intermediate"}
+    ],
+    "environment": {
+        "required_tools": ["macs2", "macs3", "homer", "bedtools", "deseq2", "edger"],
+        "optional_tools": ["meme-suite", "limma", "chipseeker", "scipy", "statsmodels", "samtools"]
+    }
+}

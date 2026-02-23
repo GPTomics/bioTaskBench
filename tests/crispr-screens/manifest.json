@@ -1,0 +1,14 @@
+{
+    "domain": "crispr-screens",
+    "display_name": "CRISPR Screens",
+    "description": "Guide-level dropout summaries, gene-level hit ranking, and control-guide QC metrics",
+    "tests": [
+        {"test_id": "crispr-001", "title": "Guide Dropout Summary", "difficulty": "basic"},
+        {"test_id": "crispr-002", "title": "Essential Gene Ranking", "difficulty": "intermediate"},
+        {"test_id": "crispr-003", "title": "Control Guide QC", "difficulty": "intermediate"}
+    ],
+    "environment": {
+        "required_tools": ["python"],
+        "optional_tools": ["mageck", "bagel", "pandas", "numpy", "scipy"]
+    }
+}

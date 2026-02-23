@@ -1,0 +1,14 @@
+{
+    "domain": "long-read-sequencing",
+    "display_name": "Long-read Sequencing",
+    "description": "Read-level quality summaries, indel profiling, and consensus-support metrics",
+    "tests": [
+        {"test_id": "lrs-001", "title": "Read Length N50", "difficulty": "basic"},
+        {"test_id": "lrs-002", "title": "Indel Burden Profiling", "difficulty": "intermediate"},
+        {"test_id": "lrs-003", "title": "Consensus Support Summary", "difficulty": "intermediate"}
+    ],
+    "environment": {
+        "required_tools": ["python"],
+        "optional_tools": ["minimap2", "samtools", "medaka", "nanostat", "pandas", "numpy"]
+    }
+}

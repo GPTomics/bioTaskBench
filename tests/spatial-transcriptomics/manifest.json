@@ -1,0 +1,15 @@
+{
+    "domain": "spatial-transcriptomics",
+    "display_name": "Spatial Transcriptomics",
+    "description": "Spatial pattern quantification, hotspot detection, and neighborhood-aware summaries",
+    "tests": [
+        {"test_id": "stx-001", "title": "Spatial Gradient Correlation", "difficulty": "basic"},
+        {"test_id": "stx-002", "title": "Hotspot Gene Detection", "difficulty": "intermediate"},
+        {"test_id": "stx-003", "title": "Neighborhood Signal Summary", "difficulty": "intermediate"},
+        {"test_id": "stx-004", "title": "Quadrant Immune Hotspot Detection", "difficulty": "intermediate"}
+    ],
+    "environment": {
+        "required_tools": ["python"],
+        "optional_tools": ["scanpy", "squidpy", "numpy", "pandas", "scipy"]
+    }
+}

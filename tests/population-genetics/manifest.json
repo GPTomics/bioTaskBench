@@ -1,0 +1,15 @@
+{
+    "domain": "population-genetics",
+    "display_name": "Population Genetics",
+    "description": "Allele-frequency statistics, differentiation, and HWE-based quality checks",
+    "tests": [
+        {"test_id": "popgen-001", "title": "Pairwise Fst Estimation", "difficulty": "basic"},
+        {"test_id": "popgen-002", "title": "Differentiated SNP Ranking", "difficulty": "intermediate"},
+        {"test_id": "popgen-003", "title": "Hardy-Weinberg Scan", "difficulty": "intermediate"},
+        {"test_id": "popgen-004", "title": "PC1 Outlier Detection", "difficulty": "intermediate"}
+    ],
+    "environment": {
+        "required_tools": ["python"],
+        "optional_tools": ["plink", "vcftools", "scikit-allel", "pandas", "numpy", "scipy"]
+    }
+}

@@ -1,0 +1,3 @@
+motif_name	expected_rank	min_pct_target	max_pvalue	notes
+CTCF	1	60	1e-10	Primary zinc finger motif (JASPAR MA0139.1, 19bp). Should be top hit with >80% target enrichment.
+CTCFL	2-5	5	1e-5	Also known as BORIS. Related zinc finger with similar but distinct binding preference.

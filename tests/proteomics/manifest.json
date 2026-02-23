@@ -1,0 +1,14 @@
+{
+    "domain": "proteomics",
+    "display_name": "Proteomics",
+    "description": "Protein intensity summaries, differential ranking, and sample-level missingness profiling",
+    "tests": [
+        {"test_id": "prot-001", "title": "Protein Intensity Summary", "difficulty": "basic"},
+        {"test_id": "prot-002", "title": "Differential Protein Ranking", "difficulty": "intermediate"},
+        {"test_id": "prot-003", "title": "Sample Missingness Summary", "difficulty": "intermediate"}
+    ],
+    "environment": {
+        "required_tools": ["python"],
+        "optional_tools": ["maxquant", "msfragger", "pandas", "numpy", "scipy"]
+    }
+}
