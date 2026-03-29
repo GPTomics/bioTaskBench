@@ -1,0 +1,14 @@
+{
+    "domain": "crispr-screens",
+    "display_name": "CRISPR Screens",
+    "description": "Guide-level dropout summaries, gene-level hit ranking, and gene essentiality from guide counts",
+    "tests": [
+        {"test_id": "crispr-001", "title": "Guide Dropout Summary", "difficulty": "basic"},
+        {"test_id": "crispr-002", "title": "Essential Gene Ranking", "difficulty": "basic"},
+        {"test_id": "crispr-003", "title": "Gene Essentiality from Guide Counts", "difficulty": "intermediate"}
+    ],
+    "environment": {
+        "required_tools": ["python"],
+        "optional_tools": ["mageck", "bagel", "pandas", "numpy", "scipy"]
+    }
+}

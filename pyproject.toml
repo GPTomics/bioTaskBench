@@ -1,0 +1,17 @@
+[build-system]
+requires = ['setuptools>=68', 'wheel']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'biotaskbench'
+version = '0.1.0'
+description = 'BioTaskBench harness and benchmark tests'
+readme = 'README.md'
+requires-python = '>=3.10'
+dependencies = []
+
+[project.scripts]
+benchmarkAgentBfx = 'harness.cli:main'
+
+[tool.setuptools]
+packages = ['harness', 'harness.adapters']

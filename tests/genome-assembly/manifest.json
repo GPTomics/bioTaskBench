@@ -1,0 +1,14 @@
+{
+    "domain": "genome-assembly",
+    "display_name": "Genome Assembly",
+    "description": "Contig summary metrics, overlap-based scaffolding checks, and consensus mismatch quantification",
+    "tests": [
+        {"test_id": "assembly-001", "title": "Assembly N50 Summary", "difficulty": "basic"},
+        {"test_id": "assembly-002", "title": "Contig Join Candidate Ranking", "difficulty": "intermediate"},
+        {"test_id": "assembly-003", "title": "Consensus Error Profile", "difficulty": "intermediate"}
+    ],
+    "environment": {
+        "required_tools": ["python"],
+        "optional_tools": ["minimap2", "samtools", "quast", "pandas", "numpy"]
+    }
+}

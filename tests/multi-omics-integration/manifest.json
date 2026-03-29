@@ -1,0 +1,14 @@
+{
+    "domain": "multi-omics-integration",
+    "display_name": "Multi-omics Integration",
+    "description": "Cross-modal correlation, integrated feature ranking, and pathway concordance summaries",
+    "tests": [
+        {"test_id": "moi-001", "title": "Expression-Methylation Correlation", "difficulty": "basic"},
+        {"test_id": "moi-002", "title": "Integrated Feature Ranking", "difficulty": "intermediate"},
+        {"test_id": "moi-003", "title": "Pathway Concordance", "difficulty": "intermediate"}
+    ],
+    "environment": {
+        "required_tools": ["python"],
+        "optional_tools": ["mofa", "snf", "pandas", "numpy", "scipy"]
+    }
+}

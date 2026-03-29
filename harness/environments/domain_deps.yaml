@@ -1,0 +1,67 @@
+chip-seq:
+  pip:
+    - macs3
+    - pyfaidx
+  system:
+    - bedtools
+    - samtools
+  notes: "HOMER is typically installed outside pip/conda."
+
+spatial-transcriptomics:
+  pip:
+    - scanpy
+    - squidpy
+    - anndata
+
+long-read-sequencing:
+  pip:
+    - pysam
+  system:
+    - minimap2
+    - samtools
+
+proteomics:
+  pip:
+    - pandas
+    - numpy
+    - scipy
+
+metabolomics:
+  pip:
+    - pandas
+    - numpy
+    - scipy
+
+genome-assembly:
+  pip:
+    - biopython
+  system:
+    - minimap2
+
+population-genetics:
+  pip:
+    - scikit-allel
+    - pandas
+    - numpy
+  system:
+    - plink
+    - vcftools
+
+crispr-screens:
+  pip:
+    - pandas
+    - numpy
+  notes: "MAGeCK is installed via conda/bioconda in most setups."
+
+multi-omics-integration:
+  pip:
+    - pandas
+    - numpy
+    - scipy
+    - scikit-learn
+
+methylation-analysis:
+  pip:
+    - pandas
+    - numpy
+  notes: "Bismark/methylKit are commonly managed outside pip."

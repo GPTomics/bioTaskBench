@@ -1,0 +1,14 @@
+{
+    "domain": "proteomics",
+    "display_name": "Proteomics",
+    "description": "Protein intensity summaries, differential ranking, and differential abundance with normalization",
+    "tests": [
+        {"test_id": "prot-001", "title": "Protein Intensity Summary", "difficulty": "basic"},
+        {"test_id": "prot-002", "title": "Differential Protein Ranking", "difficulty": "basic"},
+        {"test_id": "prot-003", "title": "Differential Protein Abundance", "difficulty": "intermediate"}
+    ],
+    "environment": {
+        "required_tools": ["python"],
+        "optional_tools": ["pandas", "numpy", "scipy", "statsmodels", "R"]
+    }
+}

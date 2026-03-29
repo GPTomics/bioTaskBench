@@ -1,0 +1,2 @@
+feature_pair	spearman_r	pvalue	direction
+expression_vs_methylation	-0.954496	1e-12	INVERSE

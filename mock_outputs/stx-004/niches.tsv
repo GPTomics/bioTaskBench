@@ -1,0 +1,5 @@
+niche	immune_fraction	spot_count	hotspot
+NE	0.775000	40	TRUE
+NW	0.225000	40	FALSE
+SE	0.200000	40	FALSE
+SW	0.100000	40	FALSE
