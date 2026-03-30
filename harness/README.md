@@ -21,6 +21,66 @@ benchmarkAgentBfx adapter-status
 BIO_SKILLS_PATH=~/.claude/skills ./scripts/run_phase5_baselines.sh
 ```
 
+## BioAgent Bench Integration
+
+BioAgent Bench (10 open-ended bioinformatics tasks) is fully integrated via the `--agent-cmd` execution path. The adapter downloads/symlinks data, prepares task.json (same format as BioTaskBench), and grades agent output deterministically against reference results.
+
+### Setup
+
+Pre-download reference results (required for grading):
+
+```bash
+cd external/bioagent-bench
+uv run python src/dataset.py download --all --dest tasks/ --results
+```
+
+Optionally pre-download input data (otherwise agents download via URLs in task.json):
+
+```bash
+uv run python src/dataset.py download --all --dest tasks/
+```
+
+### Running
+
+```bash
+# Run all gradable BioAgent Bench tasks via Claude
+benchmarkAgentBfx run --suite bioagent-bench \
+  --agent-cmd "python $(pwd)/scripts/run_claude.py" \
+  --model claude-sonnet-4-6 --effort high --output results/
+
+# Run with skills (A/B testing)
+benchmarkAgentBfx run --suite bioagent-bench \
+  --agent-cmd "python $(pwd)/scripts/run_claude.py" \
+  --skills-path /path/to/skills/ --output results/
+
+# Run via Codex
+benchmarkAgentBfx run --suite bioagent-bench \
+  --agent-cmd "python $(pwd)/scripts/run_codex.py" \
+  --model o3 --effort high --output results/
+
+# Ingest pre-computed results (no agent execution)
+BIOAGENT_BENCH_RESULTS_JSON=/path/to/results.json \
+  benchmarkAgentBfx run --suite bioagent-bench --output results/
+```
+
+### Grading Methodology
+
+Deterministic grading compares agent output against reference results with three weighted components:
+
+| Component | Weight | Method |
+|-----------|--------|--------|
+| Column overlap | 0.2 | Jaccard similarity of CSV/TSV column headers |
+| ID set overlap | 0.4 | Jaccard similarity of identifier column values (gene IDs, pathway names, etc.) |
+| Numeric correlation | 0.4 | Mean Pearson correlation across shared numeric columns |
+
+VCF outputs (giab task) use a simplified structural check (header presence + data line count).
+
+Tasks without pre-downloaded reference results are automatically skipped when using `--agent-cmd`.
+
+### Prompting Parity
+
+All three suites (BioTaskBench, BioAgent Bench, BixBench) produce identical task.json format consumed by the same agent scripts. The agent scripts (`scripts/run_claude.py`, `scripts/run_codex.py`) handle skill prompting uniformly via the `BENCHMARK_SKILLS_PATH` environment variable.
+
 ## Notes
 
 - `suite=all` now emits a combined multi-suite run artifact. External suites are scaffolded and reported as `scaffold_ready` when setup/listing works; execution and grading remain to be wired.

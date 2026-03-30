@@ -226,5 +226,70 @@ class RunnerCliSmokeTests(unittest.TestCase):
             self.assertIn('adapter execution command failed', payload['message'])
 
 
+    def test_bioagent_bench_agent_cmd_flow(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / 'bioagent-bench'
+            src_dir = root / 'src'
+            src_dir.mkdir(parents=True)
+            tasks_dir = root / 'tasks' / 'fake-task' / 'results'
+            tasks_dir.mkdir(parents=True)
+            ref_csv = 'gene_id,log2FoldChange,pvalue\nGENE1,2.5,0.001\nGENE2,-1.3,0.05\n'
+            (tasks_dir / 'results.csv').write_text(ref_csv)
+            metadata = [{'task_id': 'fake-task', 'name': 'Fake', 'description': 'Test task.', 'task_prompt': 'Analyze the data.', 'download_urls': {'data': [], 'reference_data': [], 'results': []}}]
+            (src_dir / 'task_metadata.json').write_text(json.dumps(metadata))
+
+            out_dir = Path(td) / 'results'
+            agent_cmd = f"printf 'gene_id,log2FoldChange,pvalue\\nGENE1,2.5,0.001\\nGENE2,-1.3,0.05\\n' > results.csv"
+
+            old_root = os.environ.get('BIOAGENT_BENCH_ROOT')
+            os.environ['BIOAGENT_BENCH_ROOT'] = str(root)
+            try:
+                self.assertEqual(cli.main(['run', '--suite', 'bioagent-bench', '--agent-cmd', agent_cmd, '--output', str(out_dir)]), 0)
+            finally:
+                if old_root is None:
+                    del os.environ['BIOAGENT_BENCH_ROOT']
+                else:
+                    os.environ['BIOAGENT_BENCH_ROOT'] = old_root
+
+            run_json = next(out_dir.glob('bioagent-bench-run-*/run.json'))
+            payload = json.loads(run_json.read_text())
+            self.assertIn(payload['status'], ('ok', 'partial'))
+            self.assertEqual(len(payload['results']), 1)
+            self.assertTrue(payload['results'][0]['attempted'])
+            self.assertGreater(payload['results'][0]['score'], 0.5)
+
+    def test_bioagent_bench_skips_non_gradable(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / 'bioagent-bench'
+            src_dir = root / 'src'
+            src_dir.mkdir(parents=True)
+            metadata = [
+                {'task_id': 'gradable', 'name': 'G', 'description': 'Has results.', 'task_prompt': 'Do analysis.', 'download_urls': {'data': [], 'reference_data': [], 'results': []}},
+                {'task_id': 'not-gradable', 'name': 'NG', 'description': 'No results.', 'task_prompt': 'Do analysis.', 'download_urls': {'data': [], 'reference_data': [], 'results': []}},
+            ]
+            (src_dir / 'task_metadata.json').write_text(json.dumps(metadata))
+            results_dir = root / 'tasks' / 'gradable' / 'results'
+            results_dir.mkdir(parents=True)
+            (results_dir / 'results.csv').write_text('gene_id,pvalue\nGENE1,0.01\n')
+
+            out_dir = Path(td) / 'results'
+            agent_cmd = "printf 'gene_id,pvalue\\nGENE1,0.01\\n' > results.csv"
+
+            old_root = os.environ.get('BIOAGENT_BENCH_ROOT')
+            os.environ['BIOAGENT_BENCH_ROOT'] = str(root)
+            try:
+                self.assertEqual(cli.main(['run', '--suite', 'bioagent-bench', '--agent-cmd', agent_cmd, '--output', str(out_dir)]), 0)
+            finally:
+                if old_root is None:
+                    del os.environ['BIOAGENT_BENCH_ROOT']
+                else:
+                    os.environ['BIOAGENT_BENCH_ROOT'] = old_root
+
+            run_json = next(out_dir.glob('bioagent-bench-run-*/run.json'))
+            payload = json.loads(run_json.read_text())
+            self.assertEqual(len(payload['results']), 1)
+            self.assertEqual(payload['results'][0]['test_id'], 'gradable')
+
+
 if __name__ == '__main__':
     unittest.main()
