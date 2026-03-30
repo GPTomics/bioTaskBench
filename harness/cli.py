@@ -30,6 +30,7 @@ def cmd_run(args):
         skills_path=args.skills_path,
         agent_cmd=args.agent_cmd,
         timeout_seconds=args.timeout_seconds,
+        resume_from=args.resume,
     )
 
     print(reporter.format_summary(out['payload']))
@@ -206,6 +207,7 @@ def build_parser():
     run_p.add_argument('--workspace-root')
     run_p.add_argument('--agent-cmd')
     run_p.add_argument('--timeout-seconds', type=int, default=600)
+    run_p.add_argument('--resume', metavar='RUN_PATH', help='Resume from a previous run, skipping already-completed tests')
     run_p.add_argument('--output', default='results')
     run_p.set_defaults(func=cmd_run)
 

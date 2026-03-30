@@ -32,21 +32,23 @@ def _run_agent_command(agent_cmd, task_path, test_dir, workspace_dir, model=None
         env['BENCHMARK_SKILLS_PATH'] = str(skills_path)
     if effort:
         env['BENCHMARK_EFFORT'] = str(effort)
-    completed = subprocess.run(
-        agent_cmd,
-        shell=True,
-        cwd=workspace_dir,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=timeout_seconds,
-    )
-    return {
-        'agent_cmd': agent_cmd,
-        'returncode': completed.returncode,
-        'stdout': completed.stdout[-8000:],
-        'stderr': completed.stderr[-8000:],
-    }
+    try:
+        completed = subprocess.run(
+            agent_cmd, shell=True, cwd=workspace_dir, env=env,
+            capture_output=True, text=True, timeout=timeout_seconds,
+        )
+        return {
+            'agent_cmd': agent_cmd, 'returncode': completed.returncode,
+            'stdout': completed.stdout[-8000:], 'stderr': completed.stderr[-8000:],
+            'timed_out': False,
+        }
+    except subprocess.TimeoutExpired as e:
+        return {
+            'agent_cmd': agent_cmd, 'returncode': -1,
+            'stdout': (e.stdout or b'').decode(errors='replace')[-8000:],
+            'stderr': (e.stderr or b'').decode(errors='replace')[-8000:],
+            'timed_out': True, 'timeout_seconds': timeout_seconds,
+        }
 
 
 def discover_tests(tests_root='tests', domain=None, test_id=None):
@@ -120,58 +122,80 @@ def run_biotaskbench(
     skills_path=None,
     agent_cmd=None,
     timeout_seconds=600,
+    resume_from=None,
 ):
     tests = discover_tests(tests_root, domain, test_id)
     results = []
+    prior_results = _load_resume_results(resume_from)
+    if prior_results:
+        print(f'Resuming: {len(prior_results)} completed tests from previous run', flush=True)
 
-    total = len(tests)
-    for idx, item in enumerate(tests, 1):
-        task_path = item['task_path']
-        task = schemas.load_json(task_path)
-        print(f'[{idx}/{total}] {item["domain"]}/{item["test_id"]} ...', flush=True)
-
-        execution = None
-        if workspace_root:
-            ws1 = Path(workspace_root) / item['test_id']
-            ws2 = Path(workspace_root) / item['domain'] / item['test_id']
-            if ws1.exists():
-                workspace_dir = ws1
-            elif ws2.exists():
-                workspace_dir = ws2
-            else:
-                workspace_dir = task_path.parent
-        elif agent_cmd:
-            temp_root = Path(output_dir) / '.workspaces'
-            temp_root.mkdir(parents=True, exist_ok=True)
-            workspace_dir = Path(tempfile.mkdtemp(prefix=f"{item['test_id']}-", dir=temp_root))
-            _copy_task_inputs(task, task_path.parent, workspace_dir)
-            execution = _run_agent_command(
-                agent_cmd=agent_cmd,
-                task_path=task_path,
-                test_dir=task_path.parent,
-                workspace_dir=workspace_dir,
-                model=model,
-                skills_path=skills_path,
-                effort=effort,
-                timeout_seconds=timeout_seconds,
-            )
-        else:
-            workspace_dir = task_path.parent
-
-        test_result = grader.grade_task(task, workspace_dir, task_path.parent)
-        test_result['domain'] = item['domain']
-        test_result['difficulty'] = task.get('difficulty', 'unknown')
-        test_result['task_path'] = str(task_path)
-        test_result['workspace_dir'] = str(workspace_dir)
-        if execution is not None:
-            test_result['agent_execution'] = execution
-        print(f'  score={test_result["score"]:.3f} attempted={test_result["attempted"]}', flush=True)
-        results.append(test_result)
-
-    aggregate = reporter.aggregate_results(results)
     timestamp = datetime.datetime.now(datetime.UTC).strftime('%Y%m%d-%H%M%S')
     run_dir = Path(output_dir) / f'run-{timestamp}'
 
+    total = len(tests)
+    errors = []
+    resumed = 0
+    for idx, item in enumerate(tests, 1):
+        task_path = item['task_path']
+        task = schemas.load_json(task_path)
+        tid = item['test_id']
+        if tid in prior_results:
+            results.append(prior_results[tid])
+            resumed += 1
+            print(f'[{idx}/{total}] {item["domain"]}/{tid} ... resumed (score={prior_results[tid]["score"]:.3f})', flush=True)
+            continue
+        print(f'[{idx}/{total}] {item["domain"]}/{tid} ...', flush=True)
+
+        try:
+            execution = None
+            if workspace_root:
+                ws1 = Path(workspace_root) / tid
+                ws2 = Path(workspace_root) / item['domain'] / tid
+                if ws1.exists():
+                    workspace_dir = ws1
+                elif ws2.exists():
+                    workspace_dir = ws2
+                else:
+                    workspace_dir = task_path.parent
+            elif agent_cmd:
+                temp_root = Path(output_dir) / '.workspaces'
+                temp_root.mkdir(parents=True, exist_ok=True)
+                workspace_dir = Path(tempfile.mkdtemp(prefix=f'btb-{tid}-', dir=temp_root))
+                _copy_task_inputs(task, task_path.parent, workspace_dir)
+                execution = _run_agent_command(
+                    agent_cmd=agent_cmd, task_path=task_path, test_dir=task_path.parent,
+                    workspace_dir=workspace_dir, model=model, skills_path=skills_path,
+                    effort=effort, timeout_seconds=timeout_seconds,
+                )
+            else:
+                workspace_dir = task_path.parent
+
+            test_result = grader.grade_task(task, workspace_dir, task_path.parent)
+            test_result['domain'] = item['domain']
+            test_result['difficulty'] = task.get('difficulty', 'unknown')
+            test_result['task_path'] = str(task_path)
+            test_result['workspace_dir'] = str(workspace_dir)
+            if execution is not None:
+                test_result['agent_execution'] = execution
+            print(f'  score={test_result["score"]:.3f} attempted={test_result["attempted"]}', flush=True)
+        except Exception as e:
+            print(f'  ERROR: {e}', flush=True)
+            errors.append(tid)
+            test_result = {
+                'test_id': tid, 'suite': 'biotaskbench', 'domain': item['domain'],
+                'attempted': False, 'score': 0.0, 'criteria_results': [],
+                'error': str(e),
+            }
+        results.append(test_result)
+        _save_progress(run_dir, {
+            'suite': 'biotaskbench', 'created_at_utc': timestamp, 'model': model,
+            'effort': effort, 'skills_path': skills_path, 'status': 'in_progress',
+            'message': f'{idx}/{total} tests completed', 'results': results,
+            'aggregate': reporter.aggregate_results(results),
+        })
+
+    aggregate = reporter.aggregate_results(results)
     payload = {
         'suite': 'biotaskbench',
         'created_at_utc': timestamp,
@@ -191,7 +215,26 @@ def run_biotaskbench(
     return {'run_dir': str(run_dir), 'run_json': str(run_json), 'payload': payload}
 
 
-def run_external_suite(suite, output_dir='results', model=None, effort=None, skills_path=None, agent_cmd=None, timeout_seconds=600):
+def _save_progress(run_dir, payload):
+    run_dir = Path(run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with (run_dir / 'run.json').open('w') as f:
+        json.dump(payload, f, indent=2)
+
+
+def _load_resume_results(resume_from):
+    if not resume_from:
+        return {}
+    prev = reporter.load_run(resume_from)
+    completed = {}
+    for r in prev.get('results', []):
+        tid = r.get('test_id')
+        if tid and r.get('attempted'):
+            completed[tid] = r
+    return completed
+
+
+def run_external_suite(suite, output_dir='results', model=None, effort=None, skills_path=None, agent_cmd=None, timeout_seconds=600, resume_from=None):
     adapters = {
         'bioagent-bench': BioAgentBenchAdapter,
         'bixbench': BixBenchAdapter,
@@ -200,11 +243,14 @@ def run_external_suite(suite, output_dir='results', model=None, effort=None, ski
     adapter = adapter_cls()
     timestamp = datetime.datetime.now(datetime.UTC).strftime('%Y%m%d-%H%M%S')
     run_dir = Path(output_dir) / f'{suite}-run-{timestamp}'
+    results = []
+    prior_results = _load_resume_results(resume_from)
+    if prior_results:
+        print(f'Resuming: {len(prior_results)} completed tests from previous run', flush=True)
 
     try:
         setup_info = adapter.setup()
         tests = adapter.list_tests()
-        results = []
         adapter_execution = None
 
         if agent_cmd and hasattr(adapter, 'prepare_task') and hasattr(adapter, 'grade'):
@@ -215,26 +261,56 @@ def run_external_suite(suite, output_dir='results', model=None, effort=None, ski
                     print(f'Skipping {skipped} non-gradable tests (no context files)', flush=True)
                 tests = gradable
             total = len(tests)
+            errors = []
+            resumed = 0
             for idx, test in enumerate(tests, 1):
                 tid = test['test_id']
+                if tid in prior_results:
+                    results.append(prior_results[tid])
+                    resumed += 1
+                    print(f'[{idx}/{total}] {suite}/{tid} ... resumed (score={prior_results[tid]["score"]:.3f})', flush=True)
+                    continue
                 print(f'[{idx}/{total}] {suite}/{tid} ...', flush=True)
-                temp_root = Path(output_dir) / '.workspaces'
-                temp_root.mkdir(parents=True, exist_ok=True)
-                workspace_dir = Path(tempfile.mkdtemp(prefix=f'{tid}-', dir=temp_root))
-                task_path = adapter.prepare_task(tid, workspace_dir)
-                execution = _run_agent_command(
-                    agent_cmd=agent_cmd, task_path=task_path, test_dir=workspace_dir,
-                    workspace_dir=workspace_dir, model=model, skills_path=skills_path,
-                    effort=effort, timeout_seconds=timeout_seconds,
-                )
-                test_result = adapter.grade(tid, str(workspace_dir))
-                test_result['agent_execution'] = execution
-                test_result['workspace_dir'] = str(workspace_dir)
-                print(f'  score={test_result["score"]:.3f} attempted={test_result["attempted"]}', flush=True)
+                try:
+                    temp_root = Path(output_dir) / '.workspaces'
+                    temp_root.mkdir(parents=True, exist_ok=True)
+                    workspace_dir = Path(tempfile.mkdtemp(prefix=f'{tid}-', dir=temp_root))
+                    task_path = adapter.prepare_task(tid, workspace_dir)
+                    execution = _run_agent_command(
+                        agent_cmd=agent_cmd, task_path=task_path, test_dir=workspace_dir,
+                        workspace_dir=workspace_dir, model=model, skills_path=skills_path,
+                        effort=effort, timeout_seconds=timeout_seconds,
+                    )
+                    test_result = adapter.grade(tid, str(workspace_dir))
+                    test_result['agent_execution'] = execution
+                    test_result['workspace_dir'] = str(workspace_dir)
+                    print(f'  score={test_result["score"]:.3f} attempted={test_result["attempted"]}', flush=True)
+                except Exception as e:
+                    print(f'  ERROR: {e}', flush=True)
+                    errors.append(tid)
+                    test_result = {
+                        'test_id': tid, 'suite': suite, 'domain': suite,
+                        'attempted': False, 'score': 0.0, 'criteria_results': [],
+                        'error': str(e),
+                    }
                 results.append(test_result)
+                _save_progress(run_dir, {
+                    'suite': suite, 'created_at_utc': timestamp, 'model': model,
+                    'effort': effort, 'skills_path': skills_path, 'status': 'in_progress',
+                    'message': f'{idx}/{total} tests completed', 'results': results,
+                    'aggregate': reporter.aggregate_results(results),
+                })
             aggregate = reporter.aggregate_results(results)
-            status = 'ok'
-            message = f'executed {total} tests via agent_cmd'
+            status = 'ok' if not errors else 'partial'
+            n_ok = total - len(errors)
+            parts = []
+            if not errors:
+                parts.append(f'executed {total} tests via agent_cmd')
+            else:
+                parts.append(f'executed {n_ok}/{total} tests, {len(errors)} errored: {errors}')
+            if resumed:
+                parts.append(f'{resumed} resumed from previous run')
+            message = '; '.join(parts)
         else:
             adapter_execution = adapter.run_all(model=model, skills_path=skills_path, effort=effort) if hasattr(adapter, 'run_all') else {'executed': False}
             execution_failed = bool(adapter_execution.get('executed') and adapter_execution.get('returncode', 0) != 0)
@@ -281,6 +357,10 @@ def run_external_suite(suite, output_dir='results', model=None, effort=None, ski
         if adapter_execution is not None:
             payload['adapter_execution'] = adapter_execution
     except Exception as e:
+        aggregate = reporter.aggregate_results(results) if results else {
+            'tests_total': 0, 'tests_attempted': 0, 'coverage': 0.0,
+            'score': 0.0, 'score_overall': 0.0, 'domains': {},
+        }
         payload = {
             'suite': suite,
             'created_at_utc': timestamp,
@@ -289,15 +369,8 @@ def run_external_suite(suite, output_dir='results', model=None, effort=None, ski
             'skills_path': skills_path,
             'status': 'error',
             'message': str(e),
-            'results': [],
-            'aggregate': {
-                'tests_total': 0,
-                'tests_attempted': 0,
-                'coverage': 0.0,
-                'score': 0.0,
-                'score_overall': 0.0,
-                'domains': {},
-            },
+            'results': results,
+            'aggregate': aggregate,
         }
 
     run_json = reporter.write_run_output(run_dir, payload)
@@ -335,6 +408,7 @@ def run_suite(
     skills_path=None,
     agent_cmd=None,
     timeout_seconds=600,
+    resume_from=None,
 ):
     if suite == 'biotaskbench':
         return run_biotaskbench(
@@ -348,10 +422,11 @@ def run_suite(
             skills_path=skills_path,
             agent_cmd=agent_cmd,
             timeout_seconds=timeout_seconds,
+            resume_from=resume_from,
         )
 
     if suite in {'bioagent-bench', 'bixbench'}:
-        return run_external_suite(suite=suite, output_dir=output_dir, model=model, effort=effort, skills_path=skills_path, agent_cmd=agent_cmd, timeout_seconds=timeout_seconds)
+        return run_external_suite(suite=suite, output_dir=output_dir, model=model, effort=effort, skills_path=skills_path, agent_cmd=agent_cmd, timeout_seconds=timeout_seconds, resume_from=resume_from)
 
     if suite == 'all':
         suite_outputs = []

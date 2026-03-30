@@ -11,6 +11,7 @@ benchmarkAgentBfx run --suite biotaskbench --model claude-opus-4-6 --domain chip
 benchmarkAgentBfx run --suite biotaskbench --domain chip-seq --agent-cmd "python agent.py"
 benchmarkAgentBfx run --suite all --model claude-opus-4-6
 benchmarkAgentBfx run --suite biotaskbench --skills-path ~/.claude/skills/ --domain chip-seq
+benchmarkAgentBfx run --suite bixbench --agent-cmd "python agent.py" --resume results/bixbench-run-20260329/run.json
 benchmarkAgentBfx compare results/run-a/run.json results/run-b/run.json
 benchmarkAgentBfx report results/run-a/run.json --output results/report.json
 benchmarkAgentBfx audit-data --tests-root tests
@@ -39,6 +40,7 @@ BIO_SKILLS_PATH=~/.claude/skills ./scripts/run_phase5_baselines.sh
   - direct `run.json`
   - a run directory containing `run.json`
   - a parent output directory containing `run-*/run.json` (latest is used)
+- `--resume` continues a previous run, skipping tests that already completed successfully (i.e. `attempted=True`). Results from the prior run are carried forward and merged with newly executed tests into a fresh run artifact.
 - External suite status values:
   - `scaffold_ready`: adapter loaded, but no ingested results yet
   - `ok`: results ingested/scored

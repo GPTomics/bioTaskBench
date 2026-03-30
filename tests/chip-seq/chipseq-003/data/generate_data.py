@@ -89,6 +89,53 @@ def signed_distance(peak_center, tss, strand):
     return -dist if strand == '-' else dist
 
 
+def merge_intervals(intervals):
+    if not intervals:
+        return []
+    sorted_ivs = sorted(intervals)
+    merged = [list(sorted_ivs[0])]
+    for start, end in sorted_ivs[1:]:
+        if start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return merged
+
+
+def annotate_peak(center, gene_list):
+    nearest = min(gene_list, key=lambda g: abs(center - g['tss']))
+    if any(abs(center - g['tss']) <= PROMOTER_WINDOW for g in gene_list):
+        return nearest['symbol'], 'promoter', nearest['tss'], nearest['strand']
+    for g in gene_list:
+        for ex_start, ex_end in g['exons']:
+            if ex_start <= center < ex_end:
+                return nearest['symbol'], 'exon', nearest['tss'], nearest['strand']
+    for g in gene_list:
+        if g['start'] <= center < g['end']:
+            return nearest['symbol'], 'intron', nearest['tss'], nearest['strand']
+    return nearest['symbol'], 'intergenic', nearest['tss'], nearest['strand']
+
+
+def reannotate_peaks(peaks, genes):
+    gene_list = list(genes.values())
+    reannotated = []
+    changes = 0
+    for chrom, start, end, old_gene, old_feature, old_tss, old_strand in peaks:
+        center = (start + end) // 2
+        new_gene, new_feature, new_tss, new_strand = annotate_peak(center, gene_list)
+        if new_gene != old_gene or new_feature != old_feature:
+            changes += 1
+            print(f'    peak at {center}: {old_gene}/{old_feature} -> {new_gene}/{new_feature}')
+        reannotated.append((chrom, start, end, new_gene, new_feature, new_tss, new_strand))
+    if changes:
+        print(f'  Re-annotation changed {changes} peaks')
+    else:
+        print('  No changes needed')
+    counts = {f: sum(1 for p in reannotated if p[4] == f) for f in ['promoter', 'exon', 'intron', 'intergenic']}
+    print(f'  Final distribution: ' + ', '.join(f'{c} {f}' for f, c in counts.items()))
+    return reannotated
+
+
 def generate_peaks(genes):
     rng = random.Random(RANDOM_SEED)
     gene_list = [g for g in genes.values() if g['exons']]
@@ -141,9 +188,9 @@ def generate_peaks(genes):
         peaks.append(('chr21', start, start + width, gene['symbol'], 'intron', gene['tss'], gene['strand']))
         intron_count += 1
 
-    all_intervals = sorted([(g['start'], g['end']) for g in gene_list])
-    gaps = [(all_intervals[i][1], all_intervals[i + 1][0]) for i in range(len(all_intervals) - 1)
-            if all_intervals[i + 1][0] - all_intervals[i][1] > 20000]
+    merged = merge_intervals([(g['start'], g['end']) for g in gene_list])
+    gaps = [(merged[i][1], merged[i + 1][0]) for i in range(len(merged) - 1)
+            if merged[i + 1][0] - merged[i][1] > 20000]
     intergenic_gaps = rng.sample(gaps, min(NUM_INTERGENIC, len(gaps)))
     for gap_start, gap_end in intergenic_gaps:
         center = rng.randint(gap_start + 5000, gap_end - 5000)
@@ -205,7 +252,10 @@ def main():
     print('\nStep 4: Generate synthetic peaks')
     peaks = generate_peaks(genes)
 
-    print('\nStep 5: Write outputs')
+    print('\nStep 5: Re-annotate peaks against full gene set')
+    peaks = reannotate_peaks(peaks, genes)
+
+    print('\nStep 6: Write outputs')
     write_outputs(peaks)
 
     gtf_gz.unlink()
