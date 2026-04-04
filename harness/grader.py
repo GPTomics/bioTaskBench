@@ -1,5 +1,6 @@
 import csv
 import glob
+import gzip
 import inspect
 import math
 import os
@@ -140,7 +141,7 @@ def _grade_range_check(criterion, workspace_dir, test_dir=None):
     if not path.exists():
         return {'score': 0.0, 'details': 'target_file missing'}
 
-    value = _extract_range_value(path, criterion['field'], test_dir=test_dir)
+    value = _extract_range_value(path, criterion['field'], test_dir=test_dir, criterion=criterion)
     if value is None:
         return {'score': 0.0, 'details': 'could not extract numeric value'}
 
@@ -168,8 +169,20 @@ def _grade_set_overlap(criterion, workspace_dir, test_dir):
 
     if metric == 'peak_count_jaccard':
         slop = int(criterion.get('slop_bp', 0))
-        truth = _read_intervals(expected_path)
-        pred = _read_intervals(target_path)
+        truth = _read_intervals(
+            expected_path,
+            chrom_field=criterion.get('expected_chrom_field'),
+            start_field=criterion.get('expected_start_field'),
+            end_field=criterion.get('expected_end_field'),
+        )
+        pred = _read_intervals(
+            target_path,
+            filter_field=criterion.get('filter_field'),
+            filter_value=criterion.get('filter_value'),
+            chrom_field=criterion.get('chrom_field'),
+            start_field=criterion.get('start_field'),
+            end_field=criterion.get('end_field'),
+        )
         score = _peak_count_jaccard(truth, pred, slop)
     elif metric == 'element_jaccard':
         field = criterion.get('field')
@@ -252,13 +265,15 @@ def _grade_code_executes(criterion, workspace_dir):
     return {'score': 0.0, 'details': f'non-zero exit code: {completed.returncode}'}
 
 
-def _extract_range_value(path, field, test_dir=None):
+def _extract_range_value(path, field, test_dir=None, criterion=None):
     if field.startswith('custom:'):
         name = field.split(':', 1)[1]
         fn = CUSTOM_HANDLERS.get(name)
         if not fn:
             return None
         sig = inspect.signature(fn)
+        if len(sig.parameters) >= 3 and test_dir is not None:
+            return fn(path, test_dir, criterion)
         if len(sig.parameters) >= 2 and test_dir is not None:
             return fn(path, test_dir)
         return fn(path)
@@ -390,7 +405,25 @@ def _in_range(value, bounds):
     return lo <= v <= hi
 
 
-def _read_intervals(path):
+def _read_intervals(path, filter_field=None, filter_value=None, chrom_field=None, start_field=None, end_field=None):
+    if filter_field or chrom_field or start_field or end_field or _has_header(path):
+        rows = _read_rows(path)
+        if rows:
+            chrom_key = chrom_field or ('chr' if 'chr' in rows[0] else 'chrom' if 'chrom' in rows[0] else next(iter(rows[0])))
+            start_key = start_field or ('start' if 'start' in rows[0] else 'col_2')
+            end_key = end_field or ('end' if 'end' in rows[0] else 'col_3')
+            intervals = []
+            for row in rows:
+                if filter_field is not None and str(row.get(filter_field, '')).upper() != str(filter_value).upper():
+                    continue
+                chrom = row.get(chrom_key)
+                start = _to_int(row.get(start_key))
+                end = _to_int(row.get(end_key))
+                if chrom is None or start is None or end is None:
+                    continue
+                intervals.append((str(chrom), start, end))
+            return intervals
+
     intervals = []
     with path.open() as f:
         for line in f:
@@ -782,6 +815,178 @@ def custom_gene_accuracy(path, test_dir):
     return correct / len(joined)
 
 
+def _open_maybe_gzip(path):
+    path = Path(path)
+    if path.suffix == '.gz':
+        return gzip.open(path, 'rt')
+    return path.open()
+
+
+def _parse_tss_positions(gtf_path):
+    tss_by_chr = {}
+    with _open_maybe_gzip(gtf_path) as f:
+        for line in f:
+            if not line.strip() or line.startswith('#'):
+                continue
+            parts = line.rstrip('\n').split('\t')
+            if len(parts) < 9 or parts[2] != 'transcript':
+                continue
+            chrom = parts[0]
+            start = _to_int(parts[3])
+            end = _to_int(parts[4])
+            strand = parts[6]
+            if start is None or end is None or strand not in ('+', '-'):
+                continue
+            tss = start if strand == '+' else end
+            tss_by_chr.setdefault(chrom, []).append(tss)
+    for chrom in tss_by_chr:
+        tss_by_chr[chrom].sort()
+    return tss_by_chr
+
+
+def _min_abs_distance_to_tss(chrom, start, end, tss_by_chr):
+    tss_list = tss_by_chr.get(chrom, [])
+    if not tss_list:
+        return None
+    center = (start + end) / 2.0
+    return min(abs(center - tss) for tss in tss_list)
+
+
+def _filtered_output_intervals(path, require_significant=True):
+    rows = _read_rows(path)
+    intervals = []
+    for row in rows:
+        if require_significant and str(row.get('significant', '')).upper() != 'TRUE':
+            continue
+        chrom = row.get('chr') or row.get('chrom')
+        start = _to_int(row.get('start'))
+        end = _to_int(row.get('end'))
+        if chrom is None or start is None or end is None:
+            continue
+        intervals.append((row, str(chrom), start, end))
+    return intervals
+
+
+def _intervals_overlap(a_start, a_end, b_start, b_end):
+    return not (a_end <= b_start or b_end <= a_start)
+
+
+def _fraction_significant_nonoverlap(path, forbidden_intervals):
+    output_intervals = _filtered_output_intervals(path, require_significant=True)
+    if not output_intervals:
+        return 0.0
+    clean = 0
+    forbidden_by_chr = {}
+    for chrom, start, end in forbidden_intervals:
+        forbidden_by_chr.setdefault(chrom, []).append((start, end))
+    for _, chrom, start, end in output_intervals:
+        overlaps = any(_intervals_overlap(start, end, f_start, f_end) for f_start, f_end in forbidden_by_chr.get(chrom, []))
+        if not overlaps:
+            clean += 1
+    return clean / len(output_intervals) * 100.0
+
+
+def custom_distal_sig_pct(path, test_dir):
+    output_intervals = _filtered_output_intervals(path, require_significant=True)
+    if not output_intervals:
+        return 0.0
+    tss_by_chr = _parse_tss_positions(Path(test_dir) / 'data' / 'genes.gtf.gz')
+    distal = 0
+    for _, chrom, start, end in output_intervals:
+        dist = _min_abs_distance_to_tss(chrom, start, end, tss_by_chr)
+        if dist is not None and dist > 2000:
+            distal += 1
+    return distal / len(output_intervals) * 100.0
+
+
+def custom_blacklist_free_sig_pct(path, test_dir):
+    blacklist_path = Path(test_dir) / 'data' / 'blacklist.bed'
+    return _fraction_significant_nonoverlap(path, _read_intervals(blacklist_path))
+
+
+def custom_cnv_free_sig_pct(path, test_dir):
+    cnv_path = Path(test_dir) / 'data' / 'cnv_segments.bed'
+    return _fraction_significant_nonoverlap(path, _read_intervals(cnv_path))
+
+
+def custom_spikein_basis_pct(path):
+    rows = _read_rows(path)
+    if not rows:
+        return 0.0
+    mentioned = 0
+    for row in rows:
+        basis = str(row.get('normalization_basis', '')) + ' ' + str(row.get('notes', ''))
+        if 'spike' in basis.lower():
+            mentioned += 1
+    return mentioned / len(rows) * 100.0
+
+
+def custom_truth_log2fc_correlation(path, test_dir, criterion=None):
+    expected_rel = 'expected/true_enhancer_truth.tsv'
+    if criterion and criterion.get('expected_file'):
+        expected_rel = criterion['expected_file']
+    truth_path = Path(test_dir) / expected_rel
+    if not truth_path.exists():
+        return 0.0
+
+    truth_rows = _read_rows(truth_path)
+    target_rows = _read_rows(path)
+    if not truth_rows or not target_rows:
+        return 0.0
+
+    target_intervals = []
+    for row in target_rows:
+        chrom = row.get('chr') or row.get('chrom')
+        start = _to_int(row.get('start'))
+        end = _to_int(row.get('end'))
+        log2fc = _to_float(row.get('log2fc'))
+        if chrom is None or start is None or end is None or log2fc is None:
+            continue
+        target_intervals.append((str(chrom), start, end, log2fc))
+
+    if not target_intervals:
+        return 0.0
+
+    target_by_chr = {}
+    for item in target_intervals:
+        target_by_chr.setdefault(item[0], []).append(item)
+
+    expected_vals = []
+    observed_vals = []
+    slop = 500
+    for row in truth_rows:
+        chrom = row.get('chr') or row.get('chrom')
+        start = _to_int(row.get('start'))
+        end = _to_int(row.get('end'))
+        truth_fc = _to_float(row.get('log2fc'))
+        if chrom is None or start is None or end is None or truth_fc is None:
+            continue
+
+        best = None
+        best_overlap = -1
+        t_start = start - slop
+        t_end = end + slop
+        for cand in target_by_chr.get(str(chrom), []):
+            _, c_start, c_end, obs_fc = cand
+            overlap = min(t_end, c_end + slop) - max(t_start, c_start - slop)
+            if overlap <= 0:
+                continue
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best = obs_fc
+        if best is None:
+            continue
+        expected_vals.append(truth_fc)
+        observed_vals.append(best)
+
+    if len(expected_vals) < 3:
+        return 0.0
+    score = _spearman(expected_vals, observed_vals)
+    if math.isnan(score):
+        return 0.0
+    return score
+
+
 CUSTOM_HANDLERS = {
     'unique_non_ctcf_count': custom_unique_non_ctcf_count,
     'max_missing_pct': custom_max_missing_pct,
@@ -790,4 +995,9 @@ CUSTOM_HANDLERS = {
     'planted_motif_recovery': custom_planted_motif_recovery,
     'secondary_motif_found': custom_secondary_motif_found,
     'gene_accuracy': custom_gene_accuracy,
+    'distal_sig_pct': custom_distal_sig_pct,
+    'blacklist_free_sig_pct': custom_blacklist_free_sig_pct,
+    'cnv_free_sig_pct': custom_cnv_free_sig_pct,
+    'spikein_basis_pct': custom_spikein_basis_pct,
+    'truth_log2fc_correlation': custom_truth_log2fc_correlation,
 }

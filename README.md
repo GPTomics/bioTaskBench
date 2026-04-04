@@ -1,6 +1,6 @@
 # Bio-Task Bench
 
-Bio-Task Bench is both a benchmark and evaluation tool for evaluating how well AI coding agents perform bioinformatics tasks. It includes 33 original tests across 10 domains, a deterministic grading harness, and adapters for running external bioinformatics benchmarks under the same CLI.
+Bio-Task Bench is both a benchmark and evaluation tool for evaluating how well AI coding agents perform bioinformatics tasks. It includes 34 original tests across 10 domains, a deterministic grading harness, and adapters for running external bioinformatics benchmarks under the same CLI.
 
 ## Quick Start
 
@@ -65,11 +65,11 @@ benchmarkAgentBfx report results/run-a/ results/run-b/ --output report.md
 
 ### BioTaskBench (this repo)
 
-33 tests across 10 bioinformatics domains that have little or no coverage in existing AI benchmarks:
+34 tests across 10 bioinformatics domains that have little or no coverage in existing AI benchmarks:
 
 | Domain | Tests | Difficulty |
 |---|---|---|
-| ChIP-seq | 4 | 1 basic, 3 intermediate |
+| ChIP-seq | 5 | 1 basic, 3 intermediate, 1 advanced |
 | Spatial Transcriptomics | 4 | 2 basic, 2 intermediate |
 | Population Genetics | 4 | 2 basic, 2 intermediate |
 | Long-Read Sequencing | 3 | 2 basic, 1 intermediate |
@@ -80,7 +80,7 @@ benchmarkAgentBfx report results/run-a/ results/run-b/ --output report.md
 | CRISPR Screens | 3 | 2 basic, 1 intermediate |
 | Multi-Omics Integration | 3 | 1 basic, 2 intermediate |
 
-**Basic** tests cover standard analysis workflows (peak calling, quality metrics, format conversion). **Intermediate** tests require domain-specific reasoning like CIGAR string parsing, bisulfite beta-value computation, FDR correction, or normalization workflows.
+**Basic** tests cover standard analysis workflows (peak calling, quality metrics, format conversion). **Intermediate** tests require domain-specific reasoning like CIGAR string parsing, bisulfite beta-value computation, FDR correction, or normalization workflows. **Advanced** tests require multi-step assay-specific design choices, cross-tool integration, and careful handling of biological confounders.
 
 Tests are tool-agnostic: a MACS2 solution scores the same as a HOMER solution, Python the same as R. Each test ships with a `generate_data.py` script that creates input data and expected outputs from real public datasets (ENCODE, GEO, NCBI) or simulation.
 

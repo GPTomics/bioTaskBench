@@ -21,6 +21,7 @@ python tests/chip-seq/chipseq-001/data/generate_data.py
 python tests/chip-seq/chipseq-002/data/generate_data.py
 python tests/chip-seq/chipseq-003/data/generate_data.py
 python tests/chip-seq/chipseq-004/data/generate_data.py
+python tests/chip-seq/chipseq-005/data/generate_data.py
 ```
 
 ## Per-test Outputs
@@ -56,6 +57,26 @@ Note: MACS3 uses `--nomodel --extsize 147` for this chr21-only dataset.
 - Expected generated:
   - `tests/chip-seq/chipseq-004/expected/differential_peaks.tsv`
   - `tests/chip-seq/chipseq-004/expected/true_log2fc.tsv`
+
+### `chipseq-005`
+
+- Inputs generated:
+  - `tests/chip-seq/chipseq-005/data/control_rep1.tagAlign.gz`
+  - `tests/chip-seq/chipseq-005/data/control_rep2.tagAlign.gz`
+  - `tests/chip-seq/chipseq-005/data/treated_rep1.tagAlign.gz`
+  - `tests/chip-seq/chipseq-005/data/treated_rep2.tagAlign.gz`
+  - `tests/chip-seq/chipseq-005/data/control_input.tagAlign.gz`
+  - `tests/chip-seq/chipseq-005/data/treated_input.tagAlign.gz`
+  - `tests/chip-seq/chipseq-005/data/spikein_counts.tsv`
+  - `tests/chip-seq/chipseq-005/data/genes.gtf.gz`
+  - `tests/chip-seq/chipseq-005/data/blacklist.bed`
+  - `tests/chip-seq/chipseq-005/data/cnv_segments.bed`
+- Expected generated:
+  - `tests/chip-seq/chipseq-005/expected/significant_enhancers.bed`
+  - `tests/chip-seq/chipseq-005/expected/normalization_truth.tsv`
+  - `tests/chip-seq/chipseq-005/expected/true_enhancer_truth.tsv`
+
+Note: `chipseq-005` is a hybrid benchmark. It uses public ENCODE K562 H3K27ac/input reads as the substrate, then applies deterministic benchmark-specific perturbations to create a global H3K27ac shift, true distal enhancer gains, promoter decoys, and CNV-confounded loci. Data generation requires internet access.
 
 ## Validation
 
