@@ -27,7 +27,7 @@ def generate_claude_md(task, use_skills=False):
     return '\n\n'.join(sections) + '\n'
 
 
-def build_claude_command(model=None, max_turns=50, json_output=False, use_skills=False, effort=None):
+def build_claude_command(model=None, max_turns=200, json_output=False, use_skills=False, effort=None):
     if use_skills:
         prompt = 'Complete the bioinformatics analysis task. First check if any relevant skills exists and load them as a tool. Then complete the analysis task.'
     else:

@@ -84,6 +84,19 @@ class ReporterTests(unittest.TestCase):
             loaded = reporter.load_run(root)
             self.assertIn('aggregate', loaded)
 
+    def test_load_run_finds_prefixed_run_directories(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / 'results'
+            run_dir = root / 'bixbench-run-20260101-010101'
+            run_dir.mkdir(parents=True)
+            (run_dir / 'run.json').write_text(json.dumps({'aggregate': {'coverage': 0.5}}))
+            loaded = reporter.load_run(root)
+            self.assertEqual(loaded['aggregate']['coverage'], 0.5)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -189,7 +189,7 @@ def load_run(path):
         if direct.exists():
             path = direct
         else:
-            nested = sorted(path.glob('run-*/run.json'))
+            nested = sorted(path.glob('*run-*/run.json'))
             if nested:
                 path = nested[-1]
             else:

@@ -187,6 +187,21 @@ def cmd_regrade(args):
     return 0
 
 
+def cmd_prep_bixbench(args):
+    from harness.adapters.bixbench import BixBenchAdapter
+    adapter = BixBenchAdapter()
+    adapter.setup()
+    if args.check:
+        ready, info = adapter.check_data_ready()
+        print(f'{"READY" if ready else "NOT READY"}: {info}')
+        return 0 if ready else 1
+    result = adapter.prep_data()
+    print(f'Downloaded {result["downloaded"]} capsule(s), skipped {result["skipped"]} existing, {result["total"]} total')
+    ready, info = adapter.check_data_ready()
+    print(f'{"READY" if ready else "NOT READY"}: {info}')
+    return 0 if ready else 1
+
+
 def cmd_adapter_status(_args):
     print(json.dumps(runner.external_adapter_statuses(), indent=2))
     return 0
@@ -245,6 +260,10 @@ def build_parser():
 
     status_p = sub.add_parser('adapter-status')
     status_p.set_defaults(func=cmd_adapter_status)
+
+    prep_p = sub.add_parser('prep-bixbench')
+    prep_p.add_argument('--check', action='store_true', help='Check data readiness without downloading')
+    prep_p.set_defaults(func=cmd_prep_bixbench)
 
     return parser
 

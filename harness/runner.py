@@ -2,8 +2,10 @@ import datetime
 import json
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 from harness import grader, reporter, schemas
@@ -21,7 +23,7 @@ def _copy_task_inputs(task, test_dir, workspace_dir):
             shutil.copy2(src, dst)
 
 
-def _run_agent_command(agent_cmd, task_path, test_dir, workspace_dir, model=None, skills_path=None, effort=None, timeout_seconds=600):
+def _run_agent_command(agent_cmd, task_path, test_dir, workspace_dir, model=None, skills_path=None, effort=None, timeout_seconds=600, done_check=None, done_stable_seconds=30, poll_interval=5):
     env = os.environ.copy()
     env['BIOTASKBENCH_TASK_JSON'] = str(Path(task_path).resolve())
     env['BIOTASKBENCH_TEST_DIR'] = str(Path(test_dir).resolve())
@@ -32,23 +34,82 @@ def _run_agent_command(agent_cmd, task_path, test_dir, workspace_dir, model=None
         env['BENCHMARK_SKILLS_PATH'] = str(skills_path)
     if effort:
         env['BENCHMARK_EFFORT'] = str(effort)
+
+    if done_check is None:
+        try:
+            completed = subprocess.run(
+                agent_cmd, shell=True, cwd=workspace_dir, env=env,
+                capture_output=True, text=True, timeout=timeout_seconds,
+                stdin=subprocess.DEVNULL,
+            )
+            return {
+                'agent_cmd': agent_cmd, 'returncode': completed.returncode,
+                'stdout': completed.stdout[-8000:], 'stderr': completed.stderr[-8000:],
+                'timed_out': False,
+            }
+        except subprocess.TimeoutExpired as e:
+            return {
+                'agent_cmd': agent_cmd, 'returncode': -1,
+                'stdout': (e.stdout or b'').decode(errors='replace')[-8000:],
+                'stderr': (e.stderr or b'').decode(errors='replace')[-8000:],
+                'timed_out': True, 'timeout_seconds': timeout_seconds,
+            }
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        stdout_path = Path(tmpdir) / 'stdout'
+        stderr_path = Path(tmpdir) / 'stderr'
+        with stdout_path.open('w') as fout, stderr_path.open('w') as ferr:
+            proc = subprocess.Popen(
+                agent_cmd, shell=True, cwd=workspace_dir, env=env,
+                stdout=fout, stderr=ferr, stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            start = time.monotonic()
+            done_since = None
+            early_exit = False
+            timed_out = False
+            while proc.poll() is None:
+                if time.monotonic() - start >= timeout_seconds:
+                    timed_out = True
+                    _terminate_group(proc)
+                    break
+                if done_check(workspace_dir):
+                    if done_since is None:
+                        done_since = time.monotonic()
+                    elif time.monotonic() - done_since >= done_stable_seconds:
+                        early_exit = True
+                        _terminate_group(proc)
+                        break
+                else:
+                    done_since = None
+                time.sleep(poll_interval)
+        stdout = stdout_path.read_text(errors='replace')[-8000:]
+        stderr = stderr_path.read_text(errors='replace')[-8000:]
+    result = {
+        'agent_cmd': agent_cmd,
+        'returncode': 0 if early_exit else (proc.returncode if proc.returncode is not None else -1),
+        'stdout': stdout, 'stderr': stderr,
+        'timed_out': timed_out,
+        'early_exit': early_exit,
+    }
+    if timed_out:
+        result['timeout_seconds'] = timeout_seconds
+    return result
+
+
+def _terminate_group(proc):
     try:
-        completed = subprocess.run(
-            agent_cmd, shell=True, cwd=workspace_dir, env=env,
-            capture_output=True, text=True, timeout=timeout_seconds,
-        )
-        return {
-            'agent_cmd': agent_cmd, 'returncode': completed.returncode,
-            'stdout': completed.stdout[-8000:], 'stderr': completed.stderr[-8000:],
-            'timed_out': False,
-        }
-    except subprocess.TimeoutExpired as e:
-        return {
-            'agent_cmd': agent_cmd, 'returncode': -1,
-            'stdout': (e.stdout or b'').decode(errors='replace')[-8000:],
-            'stderr': (e.stderr or b'').decode(errors='replace')[-8000:],
-            'timed_out': True, 'timeout_seconds': timeout_seconds,
-        }
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.wait()
 
 
 def discover_tests(tests_root='tests', domain=None, test_id=None):
@@ -234,7 +295,7 @@ def _load_resume_results(resume_from):
     return completed
 
 
-def run_external_suite(suite, output_dir='results', model=None, effort=None, skills_path=None, agent_cmd=None, timeout_seconds=600, resume_from=None):
+def run_external_suite(suite, output_dir='results', model=None, effort=None, skills_path=None, agent_cmd=None, timeout_seconds=600, resume_from=None, test_id=None, domain=None):
     adapters = {
         'bioagent-bench': BioAgentBenchAdapter,
         'bixbench': BixBenchAdapter,
@@ -251,6 +312,10 @@ def run_external_suite(suite, output_dir='results', model=None, effort=None, ski
     try:
         setup_info = adapter.setup()
         tests = adapter.list_tests()
+        if test_id:
+            tests = [t for t in tests if t['test_id'] == test_id]
+        if domain:
+            tests = [t for t in tests if t['test_id'].startswith(domain + '_')]
         adapter_execution = None
 
         if agent_cmd and hasattr(adapter, 'prepare_task') and hasattr(adapter, 'grade'):
@@ -280,6 +345,7 @@ def run_external_suite(suite, output_dir='results', model=None, effort=None, ski
                         agent_cmd=agent_cmd, task_path=task_path, test_dir=workspace_dir,
                         workspace_dir=workspace_dir, model=model, skills_path=skills_path,
                         effort=effort, timeout_seconds=timeout_seconds,
+                        done_check=getattr(adapter, 'is_task_done', None),
                     )
                     test_result = adapter.grade(tid, str(workspace_dir))
                     test_result['agent_execution'] = execution
@@ -426,7 +492,7 @@ def run_suite(
         )
 
     if suite in {'bioagent-bench', 'bixbench'}:
-        return run_external_suite(suite=suite, output_dir=output_dir, model=model, effort=effort, skills_path=skills_path, agent_cmd=agent_cmd, timeout_seconds=timeout_seconds, resume_from=resume_from)
+        return run_external_suite(suite=suite, output_dir=output_dir, model=model, effort=effort, skills_path=skills_path, agent_cmd=agent_cmd, timeout_seconds=timeout_seconds, resume_from=resume_from, test_id=test_id, domain=domain)
 
     if suite == 'all':
         suite_outputs = []
